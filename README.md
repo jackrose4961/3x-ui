@@ -13,6 +13,13 @@
 > **注意：** 在使用此项目和〔教程〕过程中，若因违反以上声明使用规则而产生的一切后果由使用者自负。
 
 **如果此项目对你有用，请给一个**:star2:
+
+<p align="left">
+  <a href="https://buymeacoffee.com/xeefeiz" target="_blank">
+    <img src="./media/buymeacoffe.png" alt="Image">
+  </a>
+</p>
+
 - 赞助地址（USDT/TRC20）：`TYQEmQp1P65u9bG7KPehgJdvuokfb72YkZ`
 
 ## [【3X-UI】中文交流群：https://t.me/XUI_CN](https://t.me/XUI_CN)
@@ -25,7 +32,7 @@
 ##### ①优化在VPS中进行〔脚本安装过程〕的汉化提示，增加相应的安装中文提示，让中文用户能明白清楚自己安装到了哪个环节？在细节方面，增加了安装成功之后的〔用户设置信息〕提示，在脚本中加入〔面板登录地址〕显示，
 ##### ②管理后台进行了相应的〔图标和按钮〕汉化，让中文宝宝能够看得懂，
 ##### ③安装成功后〔自动更改〕后台管理界面和电报机器人界面默认为〔中文〕，
-##### ④在管理后台中设置证书处，增加了填入路径的提示；
+##### ④在管理后台中〔设置证书处〕，增加了acme方式填入路径的提示；
 #### 2、优化了电报机器人响应〔按钮〕的名称和排序；
 #### 3、创建了〔3X-UI〕中文交流群，各位中文宝宝可以一起讨论交流；
 #### 4、管理后台中增加了〔实用导航〕页面，里面包含实用内容；
@@ -106,13 +113,12 @@ apt update -y&&apt install -y curl&&apt install -y socat
 ![11](./media/11.png)
 
 
-------------
 ## 安装指定版本
 
-若要安装指定的版本，请将该版本添加到安装命令的末尾。 e.g., ver `v2.3.8`:
+若要安装指定的版本，请使用以下安装命令。 e.g., ver `v2.4.5`:
 
 ```
-bash <(curl -Ls https://raw.githubusercontent.com/xeefei/3x-ui/master/install.sh) v2.3.8
+VERSION=v2.4.5 && bash <(curl -Ls "https://raw.githubusercontent.com/xeefei/3x-ui/$VERSION/install.sh") $VERSION
 ```
 ------------
 ## 若你的VPS默认有防火墙，请在安装完成之后放行指定端口
@@ -136,9 +142,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/xeefei/3x-ui/master/install.sh
 
 ------------
 ## 登录面板进行【常规】设置
-### 特别是如果在安装过程中，全部都是默认【回车键】安装的话，用户名/密码是随机的，而面板监听端口默认是2053，最好进入面板更改，
+### 特别是如果在安装过程中，全部都是默认【回车键】安装的话，用户名/密码/访问路径是随机的，而面板监听端口默认是2053，最好进入面板更改，
 ##### 1、填写自己想要设置的【面板监听端口】，并去登录SSH放行，
-##### 2、更改自己想要设置的【面板url根路径】，后续加上路径登录访问，
+##### 2、更改自己想要设置的【面板登录访问路径】，后续加上路径登录访问，
 ![25](./media/25.png)
 ##### 3、其他：安全设定和电报机器人等配置，可自行根据需求去进行设置，
 ##### 4、若申请了证书须填写证书公钥/私钥路径，建议配置电报机器人方便管理，
@@ -256,6 +262,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/xeefei/3x-ui/master/install.sh
    - **获取证书** ----获取SSL证书
    - **吊销证书** ----吊销现有的SSL证书
    - **续签证书** ----强制续签SSL证书
+   - **显示所有证书** ----显示服务器中所有能用的证书
+   - **设置面板证书路径** ----指定面板要使用的证书
+
 
 ### Certbot
 
@@ -375,6 +384,8 @@ systemctl restart x-ui
    docker compose up -d
    ```
 
+   添加 ```--pull always``` 标志使 docker 在拉取更新的镜像时自动重新创建容器。有关更多信息，请参阅：https://docs.docker.com/reference/cli/docker/container/run/#pull
+
    **或**
 
    ```sh
@@ -414,14 +425,16 @@ systemctl restart x-ui
 - Ubuntu 20.04+
 - Debian 11+
 - CentOS 8+
+- OpenEuler 22.03+
 - Fedora 36+
 - Arch Linux
 - Manjaro
 - Armbian
-- AlmaLinux 9+
-- Rocky Linux 9+
+- AlmaLinux 8.0+
+- Rocky Linux 8+
 - Oracle Linux 8+
 - OpenSUSE Tubleweed
+- Amazon Linux 2023
 
 ------------
 ## 支持的架构和设备
@@ -448,12 +461,15 @@ systemctl restart x-ui
 
 - English（英语）
 - Farsi（伊朗语）
-- Chinese（中文）
+- Simplified Chinese（简体中文）
+- Traditional Chinese（繁体中文）            
 - Russian（俄语）
 - Vietnamese（越南语）
 - Spanish（西班牙语）
 - Indonesian （印度尼西亚语）
 - Ukrainian（乌克兰语）
+- Turkish（土耳其语）
+- Português (葡萄牙语)
 
 ------------
 ## 项目特点
@@ -473,7 +489,6 @@ systemctl restart x-ui
 - 支持通过面板中提供的不同项目更改配置。
 - 支持从面板导出/导入数据库
 
-------------
 ## 默认面板设置
 
 <details>
@@ -652,6 +667,7 @@ Web 面板通过 Telegram Bot 支持每日流量、面板登录、数据库备�
 | `GET`  | `"/list"`                          | 获取所有入站                                 |
 | `GET`  | `"/get/:id"`                       | 获取所有入站以及inbound.id                   |
 | `GET`  | `"/getClientTraffics/:email"`      | 通过电子邮件获取客户端流量                    |
+| `GET`  | `"/getClientTrafficsById/:id"`     | 通过用户ID获取客户端流量                      |
 | `GET`  | `"/createbackup"`                  | Telegram 机器人向管理员发送备份               |
 | `POST` | `"/add"`                           | 添加入站                                    |
 | `POST` | `"/del/:id"`                       | 删除入站                                    |
@@ -667,11 +683,12 @@ Web 面板通过 Telegram Bot 支持每日流量、面板登录、数据库备�
 | `POST` | `"/delDepletedClients/:id"`        | 删除入站耗尽的客户端 （-1： all）             |
 | `POST` | `"/onlines"`                       | 获取在线用户 （ 电子邮件列表 ）               |
 
-\*- `clientId` 项应该使用下列数据
+- 使用`clientId` 项应该填写下列数据：
 
-- `client.id`  VMESS and VLESS
-- `client.password`  TROJAN
-- `client.email`  Shadowsocks
+- `client.id` for VMESS and VLESS
+- `client.password` for TROJAN
+- `client.email` for Shadowsocks
+
 
 
 - [API 文档](https://documenter.getpostman.com/view/16802678/2s9YkgD5jm)

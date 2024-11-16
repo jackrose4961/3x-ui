@@ -168,7 +168,7 @@ func (s *SubService) getLink(inbound *model.Inbound, email string) string {
 }
 
 func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
-	if inbound.Protocol != model.VMess {
+	if inbound.Protocol != model.VMESS {
 		return ""
 	}
 	obj := map[string]interface{}{
@@ -213,12 +213,6 @@ func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
 		http, _ := stream["httpSettings"].(map[string]interface{})
 		obj["path"], _ = http["path"].(string)
 		obj["host"] = searchHost(http)
-	case "quic":
-		quic, _ := stream["quicSettings"].(map[string]interface{})
-		header := quic["header"].(map[string]interface{})
-		obj["type"], _ = header["type"].(string)
-		obj["host"], _ = quic["security"].(string)
-		obj["path"], _ = quic["key"].(string)
 	case "grpc":
 		grpc, _ := stream["grpcSettings"].(map[string]interface{})
 		obj["path"] = grpc["serviceName"].(string)
@@ -281,6 +275,7 @@ func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
 		}
 	}
 	obj["id"] = clients[clientIndex].ID
+	obj["scy"] = clients[clientIndex].Security
 
 	externalProxies, _ := stream["externalProxy"].([]interface{})
 
@@ -369,12 +364,6 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 		http, _ := stream["httpSettings"].(map[string]interface{})
 		params["path"] = http["path"].(string)
 		params["host"] = searchHost(http)
-	case "quic":
-		quic, _ := stream["quicSettings"].(map[string]interface{})
-		params["quicSecurity"] = quic["security"].(string)
-		params["key"] = quic["key"].(string)
-		header := quic["header"].(map[string]interface{})
-		params["headerType"] = header["type"].(string)
 	case "grpc":
 		grpc, _ := stream["grpcSettings"].(map[string]interface{})
 		params["serviceName"] = grpc["serviceName"].(string)
@@ -463,38 +452,7 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 		}
 	}
 
-	if security == "xtls" {
-		params["security"] = "xtls"
-		xtlsSetting, _ := stream["xtlsSettings"].(map[string]interface{})
-		alpns, _ := xtlsSetting["alpn"].([]interface{})
-		var alpn []string
-		for _, a := range alpns {
-			alpn = append(alpn, a.(string))
-		}
-		if len(alpn) > 0 {
-			params["alpn"] = strings.Join(alpn, ",")
-		}
-		if sniValue, ok := searchKey(xtlsSetting, "serverName"); ok {
-			params["sni"], _ = sniValue.(string)
-		}
-		xtlsSettings, _ := searchKey(xtlsSetting, "settings")
-		if xtlsSetting != nil {
-			if fpValue, ok := searchKey(xtlsSettings, "fingerprint"); ok {
-				params["fp"], _ = fpValue.(string)
-			}
-			if insecure, ok := searchKey(xtlsSettings, "allowInsecure"); ok {
-				if insecure.(bool) {
-					params["allowInsecure"] = "1"
-				}
-			}
-		}
-
-		if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
-			params["flow"] = clients[clientIndex].Flow
-		}
-	}
-
-	if security != "tls" && security != "reality" && security != "xtls" {
+	if security != "tls" && security != "reality" {
 		params["security"] = "none"
 	}
 
@@ -603,12 +561,6 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 		http, _ := stream["httpSettings"].(map[string]interface{})
 		params["path"] = http["path"].(string)
 		params["host"] = searchHost(http)
-	case "quic":
-		quic, _ := stream["quicSettings"].(map[string]interface{})
-		params["quicSecurity"] = quic["security"].(string)
-		params["key"] = quic["key"].(string)
-		header := quic["header"].(map[string]interface{})
-		params["headerType"] = header["type"].(string)
 	case "grpc":
 		grpc, _ := stream["grpcSettings"].(map[string]interface{})
 		params["serviceName"] = grpc["serviceName"].(string)
@@ -693,39 +645,7 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 		}
 	}
 
-	if security == "xtls" {
-		params["security"] = "xtls"
-		xtlsSetting, _ := stream["xtlsSettings"].(map[string]interface{})
-		alpns, _ := xtlsSetting["alpn"].([]interface{})
-		var alpn []string
-		for _, a := range alpns {
-			alpn = append(alpn, a.(string))
-		}
-		if len(alpn) > 0 {
-			params["alpn"] = strings.Join(alpn, ",")
-		}
-		if sniValue, ok := searchKey(xtlsSetting, "serverName"); ok {
-			params["sni"], _ = sniValue.(string)
-		}
-
-		xtlsSettings, _ := searchKey(xtlsSetting, "settings")
-		if xtlsSetting != nil {
-			if fpValue, ok := searchKey(xtlsSettings, "fingerprint"); ok {
-				params["fp"], _ = fpValue.(string)
-			}
-			if insecure, ok := searchKey(xtlsSettings, "allowInsecure"); ok {
-				if insecure.(bool) {
-					params["allowInsecure"] = "1"
-				}
-			}
-		}
-
-		if streamNetwork == "tcp" && len(clients[clientIndex].Flow) > 0 {
-			params["flow"] = clients[clientIndex].Flow
-		}
-	}
-
-	if security != "tls" && security != "reality" && security != "xtls" {
+	if security != "tls" && security != "reality" {
 		params["security"] = "none"
 	}
 
@@ -838,12 +758,6 @@ func (s *SubService) genShadowsocksLink(inbound *model.Inbound, email string) st
 		http, _ := stream["httpSettings"].(map[string]interface{})
 		params["path"] = http["path"].(string)
 		params["host"] = searchHost(http)
-	case "quic":
-		quic, _ := stream["quicSettings"].(map[string]interface{})
-		params["quicSecurity"] = quic["security"].(string)
-		params["key"] = quic["key"].(string)
-		header := quic["header"].(map[string]interface{})
-		params["headerType"] = header["type"].(string)
 	case "grpc":
 		grpc, _ := stream["grpcSettings"].(map[string]interface{})
 		params["serviceName"] = grpc["serviceName"].(string)
@@ -1023,10 +937,9 @@ func (s *SubService) genRemark(inbound *model.Inbound, email string, extra strin
 					remark = append(remark, fmt.Sprintf("%dM⏳", minutes))
 				}
 			case exp < 0:
-				passedSeconds := now - exp
-				days := passedSeconds / 86400
-				hours := (passedSeconds % 86400) / 3600
-				minutes := (passedSeconds % 3600) / 60
+				days := exp / -86400
+				hours := (exp % -86400) / 3600
+				minutes := (exp % -3600) / 60
 				if days > 0 {
 					if hours > 0 {
 						remark = append(remark, fmt.Sprintf("%dD,%dH⏳", days, hours))

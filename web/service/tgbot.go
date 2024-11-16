@@ -2,6 +2,7 @@ package service
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -64,52 +65,65 @@ func (t *Tgbot) GetHashStorage() *global.HashStorage {
 }
 
 func (t *Tgbot) Start(i18nFS embed.FS) error {
+	// Initialize localizer
 	err := locale.InitLocalizer(i18nFS, &t.settingService)
 	if err != nil {
 		return err
 	}
 
-	// init hash storage => store callback queries
+	// Initialize hash storage to store callback queries
 	hashStorage = global.NewHashStorage(20 * time.Minute)
 
 	t.SetHostname()
-	tgBottoken, err := t.settingService.GetTgBotToken()
-	if err != nil || tgBottoken == "" {
-		logger.Warning("Get TgBotToken failed:", err)
+
+	// Get Telegram bot token
+	tgBotToken, err := t.settingService.GetTgBotToken()
+	if err != nil || tgBotToken == "" {
+		logger.Warning("Failed to get Telegram bot token:", err)
 		return err
 	}
 
-	tgBotid, err := t.settingService.GetTgBotChatId()
+	// Get Telegram bot chat ID(s)
+	tgBotID, err := t.settingService.GetTgBotChatId()
 	if err != nil {
-		logger.Warning("Get GetTgBotChatId failed:", err)
+		logger.Warning("Failed to get Telegram bot chat ID:", err)
 		return err
 	}
 
-	if tgBotid != "" {
-		for _, adminId := range strings.Split(tgBotid, ",") {
-			id, err := strconv.Atoi(adminId)
+	// Parse admin IDs from comma-separated string
+	if tgBotID != "" {
+		for _, adminID := range strings.Split(tgBotID, ",") {
+			id, err := strconv.Atoi(adminID)
 			if err != nil {
-				logger.Warning("Failed to get IDs from GetTgBotChatId:", err)
+				logger.Warning("Failed to parse admin ID from Telegram bot chat ID:", err)
 				return err
 			}
 			adminIds = append(adminIds, int64(id))
 		}
 	}
 
+	// Get Telegram bot proxy URL
 	tgBotProxy, err := t.settingService.GetTgBotProxy()
 	if err != nil {
-		logger.Warning("Failed to get ProxyUrl:", err)
+		logger.Warning("Failed to get Telegram bot proxy URL:", err)
 	}
 
-	bot, err = t.NewBot(tgBottoken, tgBotProxy)
+	// Get Telegram bot API server URL
+	tgBotAPIServer, err := t.settingService.GetTgBotAPIServer()
 	if err != nil {
-		fmt.Println("Get tgbot's api error:", err)
+		logger.Warning("Failed to get Telegram bot API server URL:", err)
+	}
+
+	// Create new Telegram bot instance
+	bot, err = t.NewBot(tgBotToken, tgBotProxy, tgBotAPIServer)
+	if err != nil {
+		logger.Error("Failed to initialize Telegram bot API:", err)
 		return err
 	}
 
-	// listen for TG bot income messages
+	// Start receiving Telegram bot messages
 	if !isRunning {
-		logger.Info("Starting Telegram receiver ...")
+		logger.Info("Telegram bot receiver started")
 		go t.OnReceive()
 		isRunning = true
 	}
@@ -117,26 +131,40 @@ func (t *Tgbot) Start(i18nFS embed.FS) error {
 	return nil
 }
 
-func (t *Tgbot) NewBot(token string, proxyUrl string) (*telego.Bot, error) {
-	if proxyUrl == "" {
-		// No proxy URL provided, use default instance
+func (t *Tgbot) NewBot(token string, proxyUrl string, apiServerUrl string) (*telego.Bot, error) {
+	if proxyUrl == "" && apiServerUrl == "" {
 		return telego.NewBot(token)
 	}
 
-	if !strings.HasPrefix(proxyUrl, "socks5://") {
-		logger.Warning("Invalid socks5 URL, starting with default")
+	if proxyUrl != "" {
+		if !strings.HasPrefix(proxyUrl, "socks5://") {
+			logger.Warning("Invalid socks5 URL, using default")
+			return telego.NewBot(token)
+		}
+
+		_, err := url.Parse(proxyUrl)
+		if err != nil {
+			logger.Warningf("Can't parse proxy URL, using default instance for tgbot: %v", err)
+			return telego.NewBot(token)
+		}
+
+		return telego.NewBot(token, telego.WithFastHTTPClient(&fasthttp.Client{
+			Dial: fasthttpproxy.FasthttpSocksDialer(proxyUrl),
+		}))
+	}
+
+	if !strings.HasPrefix(apiServerUrl, "http") {
+		logger.Warning("Invalid http(s) URL, using default")
 		return telego.NewBot(token)
 	}
 
-	_, err := url.Parse(proxyUrl)
+	_, err := url.Parse(apiServerUrl)
 	if err != nil {
-		logger.Warning("Can't parse proxy URL, using default instance for tgbot:", err)
+		logger.Warningf("Can't parse API server URL, using default instance for tgbot: %v", err)
 		return telego.NewBot(token)
 	}
 
-	return telego.NewBot(token, telego.WithFastHTTPClient(&fasthttp.Client{
-		Dial: fasthttpproxy.FasthttpSocksDialer(proxyUrl),
-	}))
+	return telego.NewBot(token, telego.WithAPIServer(apiServerUrl))
 }
 
 func (t *Tgbot) IsRunning() bool {
@@ -235,7 +263,12 @@ func (t *Tgbot) answerCommand(message *telego.Message, chatId int64, isAdmin boo
 
 	command, _, commandArgs := tu.ParseCommand(message.Text)
 
-	// Extract the command from the Message.
+	// Helper function to handle unknown commands.
+	handleUnknownCommand := func() {
+		msg += t.I18nBot("tgbot.commands.unknown")
+	}
+
+	// Handle the command.
 	switch command {
 	case "help":
 		msg += t.I18nBot("tgbot.commands.help")
@@ -258,9 +291,7 @@ func (t *Tgbot) answerCommand(message *telego.Message, chatId int64, isAdmin boo
 			if isAdmin {
 				t.searchClient(chatId, commandArgs[0])
 			} else {
-				// Convert message.From.ID to int64
-				fromID := int64(message.From.ID)
-				t.getClientUsage(chatId, fromID, commandArgs[0])
+				t.getClientUsage(chatId, int64(message.From.ID), commandArgs[0])
 			}
 		} else {
 			msg += t.I18nBot("tgbot.commands.usage")
@@ -270,19 +301,46 @@ func (t *Tgbot) answerCommand(message *telego.Message, chatId int64, isAdmin boo
 		if isAdmin && len(commandArgs) > 0 {
 			t.searchInbound(chatId, commandArgs[0])
 		} else {
-			msg += t.I18nBot("tgbot.commands.unknown")
+			handleUnknownCommand()
+		}
+	case "restart":
+		onlyMessage = true
+		if isAdmin {
+			if len(commandArgs) == 0 {
+				msg += t.I18nBot("tgbot.commands.restartUsage")
+			} else if strings.ToLower(commandArgs[0]) == "force" {
+				if t.xrayService.IsXrayRunning() {
+					err := t.xrayService.RestartXray(true)
+					if err != nil {
+						msg += t.I18nBot("tgbot.commands.restartFailed", "Error=="+err.Error())
+					} else {
+						msg += t.I18nBot("tgbot.commands.restartSuccess")
+					}
+				} else {
+					msg += t.I18nBot("tgbot.commands.xrayNotRunning")
+				}
+			} else {
+				handleUnknownCommand()
+				msg += t.I18nBot("tgbot.commands.restartUsage")
+			}
+		} else {
+			handleUnknownCommand()
 		}
 	default:
-		msg += t.I18nBot("tgbot.commands.unknown")
+		handleUnknownCommand()
 	}
 
 	if msg != "" {
-		if onlyMessage {
-			t.SendMsgToTgbot(chatId, msg)
-			return
-		} else {
-			t.SendAnswer(chatId, msg, isAdmin)
-		}
+		t.sendResponse(chatId, msg, onlyMessage, isAdmin)
+	}
+}
+
+// Helper function to send the message based on onlyMessage flag.
+func (t *Tgbot) sendResponse(chatId int64, msg string, onlyMessage, isAdmin bool) {
+	if onlyMessage {
+		t.SendMsgToTgbot(chatId, msg)
+	} else {
+		t.SendAnswer(chatId, msg, isAdmin)
 	}
 }
 
@@ -762,8 +820,40 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 				} else {
 					t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.answers.errorOperation"))
 				}
+			case "get_clients":
+				inboundId := dataArray[1]
+				inboundIdInt, err := strconv.Atoi(inboundId)
+				if err != nil {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
+					return
+				}
+				inbound, err := t.inboundService.GetInbound(inboundIdInt)
+				if err != nil {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
+					return
+				}
+				clients, err := t.getInboundClients(inboundIdInt)
+				if err != nil {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
+					return
+				}
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseClient", "Inbound=="+inbound.Remark), clients)
+
 			}
 			return
+		} else {
+			switch callbackQuery.Data {
+			case "get_inbounds":
+				inbounds, err := t.getInbounds()
+				if err != nil {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
+					return
+
+				}
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.allClients"))
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseInbound"), inbounds)
+			}
+
 		}
 	}
 
@@ -817,6 +907,7 @@ func checkAdmin(tgId int64) bool {
 func (t *Tgbot) SendAnswer(chatId int64, msg string, isAdmin bool) {
 	numericKeyboard := tu.InlineKeyboard(
 		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.allClients")).WithCallbackData(t.encodeQuery("get_inbounds")),
 			tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.serverUsage")).WithCallbackData(t.encodeQuery("get_usage")),
 		),
 		tu.InlineKeyboardRow(
@@ -831,6 +922,7 @@ func (t *Tgbot) SendAnswer(chatId int64, msg string, isAdmin bool) {
 			tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.getBanLogs")).WithCallbackData(t.encodeQuery("get_banlogs")),
 			tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.dbBackup")).WithCallbackData(t.encodeQuery("get_backup")),
 		),
+		// TODOOOOOOOOOOOOOO: Add restart button here.
 	)
 	numericKeyboardClient := tu.InlineKeyboard(
 		tu.InlineKeyboardRow(
@@ -1073,6 +1165,72 @@ func (t *Tgbot) getInboundUsages() string {
 		}
 	}
 	return info
+}
+
+func (t *Tgbot) getInbounds() (*telego.InlineKeyboardMarkup, error) {
+	inbounds, err := t.inboundService.GetAllInbounds()
+	var buttons []telego.InlineKeyboardButton
+
+	if err != nil {
+		logger.Warning("GetAllInbounds run failed:", err)
+		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
+	} else {
+		if len(inbounds) > 0 {
+			for _, inbound := range inbounds {
+				status := "❌"
+				if inbound.Enable {
+					status = "✅"
+				}
+				buttons = append(buttons, tu.InlineKeyboardButton(fmt.Sprintf("%v - %v", inbound.Remark, status)).WithCallbackData(t.encodeQuery("get_clients "+strconv.Itoa(inbound.Id))))
+			}
+		} else {
+			logger.Warning("GetAllInbounds run failed:", err)
+			return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
+		}
+
+	}
+	cols := 0
+	if len(buttons) < 6 {
+		cols = 3
+	} else {
+		cols = 2
+	}
+	keyboard := tu.InlineKeyboardGrid(tu.InlineKeyboardCols(cols, buttons...))
+	return keyboard, nil
+}
+
+func (t *Tgbot) getInboundClients(id int) (*telego.InlineKeyboardMarkup, error) {
+	inbound, err := t.inboundService.GetInbound(id)
+	if err != nil {
+		logger.Warning("getIboundClients run failed:", err)
+		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
+	}
+	clients, err := t.inboundService.GetClients(inbound)
+	var buttons []telego.InlineKeyboardButton
+
+	if err != nil {
+		logger.Warning("GetInboundClients run failed:", err)
+		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
+	} else {
+		if len(clients) > 0 {
+			for _, client := range clients {
+				buttons = append(buttons, tu.InlineKeyboardButton(client.Email).WithCallbackData(t.encodeQuery("client_get_usage "+client.Email)))
+			}
+
+		} else {
+			return nil, errors.New(t.I18nBot("tgbot.answers.getClientsFailed"))
+		}
+
+	}
+	cols := 0
+	if len(buttons) < 6 {
+		cols = 3
+	} else {
+		cols = 2
+	}
+	keyboard := tu.InlineKeyboardGrid(tu.InlineKeyboardCols(cols, buttons...))
+
+	return keyboard, nil
 }
 
 func (t *Tgbot) clientInfoMsg(

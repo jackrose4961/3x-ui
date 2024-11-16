@@ -181,8 +181,13 @@ func (x *XrayAPI) GetTraffic(reset bool) ([]*Traffic, []*ClientTraffic, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
+	if x.StatsServiceClient == nil {
+		return nil, nil, common.NewError("xray StatusServiceClient is not initialized")
+	}
+
 	resp, err := (*x.StatsServiceClient).QueryStats(ctx, &statsService.QueryStatsRequest{Reset_: reset})
 	if err != nil {
+		logger.Debug("Failed to query Xray stats:", err)
 		return nil, nil, err
 	}
 
@@ -196,7 +201,6 @@ func (x *XrayAPI) GetTraffic(reset bool) ([]*Traffic, []*ClientTraffic, error) {
 			processClientTraffic(matches, stat.Value, emailTrafficMap)
 		}
 	}
-
 	return mapToSlice(tagTrafficMap), mapToSlice(emailTrafficMap), nil
 }
 
